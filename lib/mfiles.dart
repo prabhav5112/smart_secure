@@ -3,6 +3,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:tflite/tflite.dart';
+//import 'package:image/image.dart' as img;
 
 class MaliciousApps extends StatefulWidget {
   @override
@@ -17,8 +19,8 @@ class _FilePickerDemoState extends State<MaliciousApps> {
   final _initialDirectoryController = TextEditingController();
   final _fileExtensionController = TextEditingController();
   String? _fileName;
-  List<PlatformFile>? _paths;
   String? _directoryPath;
+  List<PlatformFile>? _paths;
   String? _extension;
   bool _isLoading = false;
   bool _lockParentWindow = false;
@@ -31,47 +33,6 @@ class _FilePickerDemoState extends State<MaliciousApps> {
     super.initState();
     _fileExtensionController
         .addListener(() => _extension = _fileExtensionController.text);
-  }
-
-  void _pickFiles() async {
-    _resetState();
-    try {
-      _directoryPath = null;
-      _paths = (await FilePicker.platform.pickFiles(
-        type: _pickingType,
-        allowMultiple: _multiPick,
-        onFileLoading: (FilePickerStatus status) => print(status),
-        allowedExtensions: (_extension?.isNotEmpty ?? false)
-            ? _extension?.replaceAll(' ', '').split(',')
-            : null,
-        dialogTitle: _dialogTitleController.text,
-        initialDirectory: _initialDirectoryController.text,
-        lockParentWindow: _lockParentWindow,
-      ))
-          ?.files;
-    } on PlatformException catch (e) {
-      _logException('Unsupported operation$e');
-    } catch (e) {
-      _logException(e.toString());
-    }
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _fileName =
-          _paths != null ? _paths!.map((e) => e.name).toString() : '...';
-      _userAborted = _paths == null;
-    });
-  }
-
-  void _scanFiles() async {
-    _resetState();
-    try {
-      _directoryPath = null;
-    } on PlatformException catch (e) {
-      _logException('Unsupported operation$e');
-    } catch (e) {
-      _logException(e.toString());
-    }
   }
 
   void _logException(String message) {
@@ -100,6 +61,81 @@ class _FilePickerDemoState extends State<MaliciousApps> {
       _paths = null;
       _userAborted = false;
     });
+  }
+
+  void _pickFiles() async {
+    _resetState();
+    try {
+      _directoryPath = null;
+      _paths = (await FilePicker.platform.pickFiles(
+        type: _pickingType,
+        allowMultiple: _multiPick,
+        onFileLoading: (FilePickerStatus status) => print(status),
+        allowedExtensions: (_extension?.isNotEmpty ?? false)
+            ? _extension?.replaceAll(' ', '').split(',')
+            : null,
+        dialogTitle: _dialogTitleController.text,
+        initialDirectory: _initialDirectoryController.text,
+        lockParentWindow: _lockParentWindow,
+      ))
+          ?.files;
+      //String? fpath = "${_directoryPath!}/${_fileName!}";
+    } on PlatformException catch (e) {
+      _logException('Unsupported operation$e');
+    } catch (e) {
+      _logException(e.toString());
+    }
+    if (!mounted) return;
+    setState(() {
+      _isLoading = false;
+      _fileName =
+          _paths != null ? _paths!.map((e) => e.name).toString() : '...';
+      _userAborted = _paths == null;
+      _directoryPath =
+          _paths != null ? _paths!.map((e) => e.path).toString() : '...';
+    });
+  }
+
+  void _loadTFModel() async {
+    print("In loadTFModel\n");
+    var model = 'assets/converted_tflite/model_unquant.tflite';
+    var labels = 'assets/converted_tflite/labels.txt';
+    await Tflite.loadModel(
+        model: model,
+        labels: labels,
+        numThreads: 1, // defaults to 1
+        isAsset:
+            true, // defaults to true, set to false to load resources outside assets
+        useGpuDelegate:
+            false // defaults to false, set to true to use GPU delegate
+        );
+  }
+
+  void runModel() async {
+    print("In runModel\n");
+    var recognitions = await Tflite.runModelOnImage(
+        path: _directoryPath!, // required
+        imageMean: 0.0, // defaults to 117.0
+        imageStd: 255.0, // defaults to 1.0
+        numResults: 2, // defaults to 5
+        threshold: 0.2, // defaults to 0.1
+        asynch: true // defaults to true
+        );
+    print(recognitions);
+    await Tflite.close();
+  }
+
+  void _scanFiles() async {
+    _resetState();
+    try {
+      print("In scanFiles\n");
+      _loadTFModel();
+      runModel();
+    } on PlatformException catch (e) {
+      _logException('Unsupported operation$e');
+    } catch (e) {
+      _logException(e.toString());
+    }
   }
 
   @override
@@ -196,7 +232,7 @@ class _FilePickerDemoState extends State<MaliciousApps> {
                       SizedBox(
                         width: 120,
                         child: FloatingActionButton.extended(
-                            onPressed: () => _scanFiles,
+                            onPressed: () => _scanFiles(),
                             label: Text('Scan file'),
                             icon: const Icon(Icons.search_outlined)),
                       ),
